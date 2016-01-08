@@ -45,6 +45,14 @@ private:
     BluetoothManager();
     BluetoothManager(const BluetoothManager &object);
 
+protected:
+
+    void handle_event(BluetoothType type, std::string *name,
+        std::string *identifier, BluetoothObject &object);
+    void handle_event(const BluetoothEvent &event, BluetoothObject &object) {
+        handle_event(event.get_type(), event.get_name(), event.get_identifier(), object);
+    }
+
 public:
     virtual std::string get_java_class() const;
     virtual std::string get_class_name() const;
@@ -56,6 +64,23 @@ public:
       * @return An initialized BluetoothManager instance.
       */
     static BluetoothManager *get_bluetooth_manager();
+
+    void add_event(std::shared_ptr<BluetoothEvent> event) {
+        event_list.push_back(event);
+    }
+
+    void remove_event(std::shared_ptr<BluetoothEvent> event) {
+        event_list.remove(event);
+    }
+
+    std::unique_ptr<BluetoothObject> find(BluetoothType type, std::string *name,
+        std::string* identifier, BluetoothObject *parent,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds::zero());
+
+    std::weak_ptr<BluetoothEvent> find(BluetoothType type, std::string *name,
+        std::string* identifier, BluetoothObject *parent, BluetoothCallback cb,
+        bool execute_once = true,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds::zero());
 
     std::unique_ptr<BluetoothObject> get_object(BluetoothType type,
         std::string *name, std::string *identifier, BluetoothObject *parent);

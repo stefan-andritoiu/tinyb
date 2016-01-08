@@ -46,11 +46,11 @@ public:
         std::string *name = NULL;
         std::string *identifier = NULL;
         BluetoothObject *bobj = NULL;
-    
+
         /* Unknown interface, ignore */
         if (info == NULL)
             return;
-    
+
         if(IS_GATT_SERVICE1_PROXY(interface)) {
             type = BluetoothType::GATT_SERVICE;
             bobj = new BluetoothGattService(GATT_SERVICE1(object));
@@ -76,25 +76,26 @@ public:
             bobj = new BluetoothAdapter(ADAPTER1(object));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
         }
-    
+
         if (type == BluetoothType::NONE) /* It does not match anything */
             return;
-    
+
         //BluetoothEvent event = BluetoothEvent(type, );
     }
-    
+
     static void on_object_added (GDBusObjectManager *manager,
         GDBusObject *object, gpointer user_data) {
         GList *l, *interfaces = g_dbus_object_get_interfaces(object);
-    
+
         for(l = interfaces; l != NULL; l = l->next)
             on_interface_added(object, (GDBusInterface *)l->data, user_data);
-    
+
         g_list_free_full(interfaces, g_object_unref);
     }
 };
 
 GDBusObjectManager *gdbus_manager = NULL;
+GThread *manager_thread = NULL;
 
 std::string BluetoothManager::get_class_name() const
 {
@@ -159,14 +160,43 @@ std::vector<std::unique_ptr<BluetoothObject>> BluetoothManager::get_objects(
     return vector;
 }
 
-static void *init_manager_thread(void *data)
+std::unique_ptr<BluetoothObject> BluetoothManager::find(BluetoothType type,
+    std::string *name, std::string* identifier, BluetoothObject *parent,
+    std::chrono::milliseconds timeout)
+{
+    std::shared_ptr<BluetoothEvent> event(new BluetoothEvent(type, name,
+        identifier, parent));
+    add_event(event);
+
+    auto object = get_object(type, name, identifier, parent);
+
+    if (object == nullptr) {
+        event->wait(timeout);
+        object = std::unique_ptr<BluetoothObject>(event->get_result());
+    }
+
+    return object;
+}
+
+std::weak_ptr<BluetoothEvent> BluetoothManager::find(BluetoothType type,
+    std::string *name, std::string* identifier, BluetoothObject *parent,
+    BluetoothCallback cb, bool execute_once,
+    std::chrono::milliseconds timeout)
+{
+    std::shared_ptr<BluetoothEvent> event(new BluetoothEvent(type, name,
+        identifier, parent));
+    add_event(event);
+    return std::weak_ptr<BluetoothEvent>(event);
+}
+
+
+static gpointer init_manager_thread(void *data)
 {
     GMainLoop *loop;
     GDBusObjectManager *gdbus_manager = (GDBusObjectManager *) data;
 
     loop = g_main_loop_new(NULL, FALSE);
 
-    /* Not completely implemented
     g_signal_connect(gdbus_manager,
         "interface-added",
          G_CALLBACK(BluetoothEventManager::on_interface_added),
@@ -176,7 +206,6 @@ static void *init_manager_thread(void *data)
         "object-added",
          G_CALLBACK(BluetoothEventManager::on_object_added),
          NULL);
-    */
 
     g_main_loop_run(loop);
     return NULL;
@@ -202,7 +231,7 @@ BluetoothManager::BluetoothManager() : event_list()
             g_error_free(error);
     }
 
-    g_thread_new(NULL, init_manager_thread, gdbus_manager);
+    manager_thread = g_thread_new(NULL, init_manager_thread, gdbus_manager);
 
     objects = g_dbus_object_manager_get_objects(gdbus_manager);
 
