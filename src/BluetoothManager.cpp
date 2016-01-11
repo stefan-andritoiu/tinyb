@@ -43,9 +43,8 @@ public:
         GDBusInterface *interface, gpointer user_data) {
         GDBusInterfaceInfo *info = g_dbus_interface_get_info(interface);
         BluetoothType type = BluetoothType::NONE;
-        std::string *name = NULL;
-        std::string *identifier = NULL;
-        BluetoothObject *bobj = NULL;
+        BluetoothObject* bobj;
+        BluetoothManager *manager = BluetoothManager::get_bluetooth_manager();
 
         /* Unknown interface, ignore */
         if (info == NULL)
@@ -53,34 +52,45 @@ public:
 
         if(IS_GATT_SERVICE1_PROXY(interface)) {
             type = BluetoothType::GATT_SERVICE;
-            bobj = new BluetoothGattService(GATT_SERVICE1(object));
+            auto obj = new BluetoothGattService(GATT_SERVICE1(interface));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
+            auto uuid = obj->get_uuid();
+            auto parent = obj->get_device();
+            manager->handle_event(type, nullptr, &uuid, &parent, *obj);
         }
         else if(IS_GATT_CHARACTERISTIC1_PROXY(interface)) {
             type = BluetoothType::GATT_CHARACTERISTIC;
-            bobj = new BluetoothGattCharacteristic(GATT_CHARACTERISTIC1(object));
+            auto obj = new BluetoothGattCharacteristic(GATT_CHARACTERISTIC1(interface));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
+            auto uuid = obj->get_uuid();
+            auto parent = obj->get_service();
+            manager->handle_event(type, nullptr, &uuid, &parent, *obj);
         }
         else if(IS_GATT_DESCRIPTOR1_PROXY(interface)) {
             type = BluetoothType::GATT_DESCRIPTOR;
-            bobj = new BluetoothGattDescriptor(GATT_DESCRIPTOR1(object));
+            auto obj = new BluetoothGattDescriptor(GATT_DESCRIPTOR1(interface));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
+            auto uuid = obj->get_uuid();
+            auto parent = obj->get_characteristic();
+            manager->handle_event(type, nullptr, &uuid, &parent, *obj);
         }
         else if(IS_DEVICE1_PROXY(interface)) {
             type = BluetoothType::DEVICE;
-            bobj = new BluetoothDevice(DEVICE1(object));
+            auto obj = new BluetoothDevice(DEVICE1(interface));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
+            auto name = obj->get_name();
+            auto uuid = obj->get_address();
+            auto parent = obj->get_adapter();
+            manager->handle_event(type, &name, &uuid, &parent, *obj);
         }
         else if(IS_ADAPTER1_PROXY(interface)) {
             type = BluetoothType::ADAPTER;
-            bobj = new BluetoothAdapter(ADAPTER1(object));
+            auto obj = new BluetoothAdapter(ADAPTER1(interface));
             g_print("Object %s - Interface added: %s\n", g_dbus_object_get_object_path(object), info->name);
+            auto name = obj->get_name();
+            auto uuid = obj->get_address();
+            manager->handle_event(type, &name, &uuid, nullptr, *obj);
         }
-
-        if (type == BluetoothType::NONE) /* It does not match anything */
-            return;
-
-        //BluetoothEvent event = BluetoothEvent(type, );
     }
 
     static void on_object_added (GDBusObjectManager *manager,
@@ -189,6 +199,33 @@ std::weak_ptr<BluetoothEvent> BluetoothManager::find(BluetoothType type,
     return std::weak_ptr<BluetoothEvent>(event);
 }
 
+void BluetoothManager::handle_event(BluetoothType type, std::string *name,
+    std::string *identifier, BluetoothObject *parent, BluetoothObject &object)
+{
+    for (auto it = event_list.begin();
+        it != event_list.end();) {
+        if ((*it)->get_type() != BluetoothType::NONE && ((*it)->get_type()) != type) {
+            ++it;
+            continue; /* this event does not match */
+        }
+        if ((*it)->get_name() != NULL)
+            if (name == NULL || *((*it)->get_name()) != *name) {
+                ++it;
+                continue; /* this event does not match */
+            }
+        if ((*it)->get_identifier() != NULL)
+            if (identifier == NULL || *((*it)->get_identifier()) != *identifier) {
+                ++it;
+                continue; /* this event does not match */
+            }
+
+        /* The event matches, execute and see if it needs to reexecute */
+        if ((*it)->execute_callback(object))
+            it = event_list.erase(it);
+        else
+            ++it;
+    }
+}
 
 static gpointer init_manager_thread(void *data)
 {
