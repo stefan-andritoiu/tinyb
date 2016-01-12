@@ -51,6 +51,7 @@ enum class BluetoothType {
 class tinyb::BluetoothObject
 {
 public:
+    static BluetoothType class_type() { return BluetoothType::NONE; }
 
     /** Returns the complete Java class of this object
       * @return A std::string containing the java class of this object

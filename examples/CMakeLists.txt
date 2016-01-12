@@ -14,3 +14,12 @@ set_target_properties(hellotinyb
 include_directories(${PROJECT_SOURCE_DIR}/api)
 
 target_link_libraries (hellotinyb tinyb)
+
+add_executable (asynctinyb asynctinyb.cpp)
+set_target_properties(asynctinyb
+    PROPERTIES
+    CXX_STANDARD 11)
+
+include_directories(${PROJECT_SOURCE_DIR}/api)
+
+target_link_libraries (asynctinyb tinyb)

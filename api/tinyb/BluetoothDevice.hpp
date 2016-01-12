@@ -57,6 +57,7 @@ protected:
         std::string *identifier = nullptr,
         BluetoothObject *parent = nullptr);
 public:
+    static BluetoothType class_type() { return BluetoothType::DEVICE; }
 
     virtual std::string get_java_class() const;
     virtual std::string get_class_name() const;
